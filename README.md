@@ -37,5 +37,6 @@ This project is implemented using R software.
 PUBLIC HEALTH RELEVANCE
 This work supports One Health surveillance,helping authorities understand how much RVF is being missed and how improved screening can reduce disease burden in high risk Ugandan communities.
 
-Author:_Nantambi Faith Gloria_
+Author:_Nantambi Faith Gloria_    
+
 Research Focus: _Zoonotic disease modelling,surveillance gaps and public health preparedness in Uganda.
