@@ -39,4 +39,4 @@ This work supports One Health surveillance,helping authorities understand how mu
 
 Author:_Nantambi Faith Gloria_    
 
-Research Focus: _Zoonotic disease modelling,surveillance gaps and public health preparedness in Uganda.
+Research Focus: _Zoonotic disease modelling,surveillance gaps and public health preparedness in Uganda._
