@@ -1,0 +1,170 @@
+## SEIR MODEL FOR RIFT VALLEY FEVER (RVF)
+## Humans (Abattoir Staff – Namisindwa District)
+## Spillover-driven transmission with decaying seasonality
+
+## LOAD LIBRARIES
+library(deSolve)
+library(rootSolve)
+library(ggplot2)
+library(dplyr)
+
+## POPULATION
+N <- 283   # Total abattoir staff (closed population)
+
+## Define initial susceptible pool
+S0 <- 30   # actively exposed abattoir workers
+
+## DEMOGRAPHY
+mu <- 1 / (60 * 365)    # Natural death/replacement rate (per day)
+
+## DISEASE PARAMETERS (HUMANS)
+eh <- 1 / 4             # Incubation rate (mean 4 days)
+ch <- 1 / 10            # Recovery rate (mean 10 days infectious)
+lh <- 0.01              # Disease-induced mortality (per day)
+
+## WANING IMMUNITY
+omega <- 1 / (3 * 365)  # Immunity wanes after ~3 years
+
+## LIVESTOCK-TO-HUMAN SPILLOVER
+Il  <- 20               # Infected livestock
+L   <- 100              # Total livestock
+klh <- 0.03             # Spillover transmission coefficient
+
+## Mean (constant) force of infection from livestock
+lambda_mean <- klh * (Il / L)
+
+## SEASONAL FORCING (DECAYING)
+amp    <- 0.6           # Initial seasonal amplitude
+period <- 365           # Annual seasonality (days)
+tau    <- 5 * 365       # Decay timescale (5 years)
+
+## Compute spillover reproductive number
+R0_spill <- (lambda_mean * S0 * eh) /
+  ((eh + mu) * (mu + lh + ch))
+
+R0_spill
+
+## ENDEMIC EQUILIBRIUM (NO SEASONALITY)
+seir_equilibrium <- function(x) {
+  
+  S <- x[1]
+  E <- x[2]
+  I <- x[3]
+  R <- x[4]
+  
+  # Population replacement balances natural + disease mortality
+  Ph <- mu * N + lh * I
+  
+  dS <- Ph - lambda_mean * S - mu * S + omega * R
+  dE <- lambda_mean * S - (eh + mu) * E
+  dI <- eh * E - (mu + lh + ch) * I
+  dR <- ch * I - mu * R - omega * R
+  
+  c(dS, dE, dI, dR)
+}
+
+## Solve for endemic equilibrium
+EE <- multiroot(
+  f = seir_equilibrium,
+  start = c(50, 5, 5, 223)
+)$root
+
+names(EE) <- c("S", "E", "I", "R")
+
+## Check population balance
+EE
+sum(EE)   # ≈ 283
+
+## FULL SEIR MODEL WITH TIME-VARYING FORCE OF INFECTION
+seir_model <- function(time, state, parameters) {
+  
+  with(as.list(c(state, parameters)), {
+    
+    ## Decaying seasonal force of infection
+    lambda_t <- lambda_mean *
+      (1 + amp * exp(-time / tau) *
+         sin(2 * pi * time / period))
+    
+    lambda_t <- max(lambda_t, 0)  # Ensure non-negative
+    
+    ## Effective surveillance-driven removal
+    detect <- screen * Se
+    
+    ## Population replacement
+    Ph <- mu * N + lh * I
+    
+    dS <- Ph - lambda_t * S - mu * S + omega * R
+    dE <- lambda_t * S - (eh + mu) * E
+    dI <- eh * E - (mu + lh + ch + detect) * I
+    dR <- ch * I + detect * I - mu * R - omega * R
+    
+    list(c(dS, dE, dI, dR))
+  })
+}
+
+## SURVEILLANCE SCENARIOS
+scenarios <- list(
+  Status_Quo = list(
+    Se = 0.74,
+    screen = 0.00
+  ),
+  Improved_Surveillance = list(
+    Se = 0.90,
+    screen = 0.80
+  )
+)
+
+## SIMULATION SETTINGS
+times  <- seq(0, 365 * 50, by = 1)   # 50 years
+burnin <- 365 * 20                  # 20-year burn-in
+
+## INITIAL CONDITIONS (PERTURBED EQUILIBRIUM)
+initial_state <- EE * c(1.05, 0.95, 1.10, 0.90)
+
+## RUN SIMULATIONS
+results <- list()
+
+for (sc in names(scenarios)) {
+  
+  params <- c(
+    mu = mu,
+    eh = eh,
+    ch = ch,
+    lh = lh,
+    lambda_mean = lambda_mean,
+    omega = omega,
+    amp = amp,
+    tau = tau,
+    period = period,
+    Se = scenarios[[sc]]$Se,
+    screen = scenarios[[sc]]$screen
+  )
+  
+  out <- ode(
+    y = initial_state,
+    times = times,
+    func = seir_model,
+    parms = params
+  )
+  
+  df <- as.data.frame(out)
+  df$Scenario <- sc
+  results[[sc]] <- df
+}
+
+results_all <- bind_rows(results)
+
+## PLOT: TRANSIENT OSCILLATIONS → ENDEMIC EQUILIBRIUM
+ggplot(results_all,
+       aes(x = time / 365, y = I, color = Scenario)) +
+  geom_line(linewidth = 1.2) +
+  geom_vline(xintercept = burnin / 365,
+             linetype = "dashed", color = "black") +
+  labs(
+    title = "RVF Dynamics Among Abattoir Staff",
+    subtitle = "Transient Seasonal Oscillations Around a Stable Endemic Equilibrium",
+    x = "Time (years)",
+    y = "Infectious Individuals"
+  ) +
+  theme_minimal()
+
